@@ -1,3 +1,4 @@
+#!/bin/python3
 import multiprocessing as mp
 import time
 import numpy as np
@@ -5,9 +6,23 @@ import random
 import scipy.misc
 
 class Game(object):
+    @staticmethod
+    def in_square(big_box, little_box):
+        (big_x_min, big_y_min) = big_box['top_left']
+        (big_size_x, big_size_y) = big_box['size']
+        (big_x_max, big_y_max) = (big_x_min + big_size_x,
+                big_y_min + big_size_y)
+
+        (little_x_min, little_y_min) = little_box['top_left']
+        (little_size_x, little_size_y) = little_box['size']
+        (little_x_max, little_y_max) = (little_x_min + little_size_x,
+                little_y_min + little_size_y)
+
+        return not (big_x_min > little_x_min or big_y_min > little_y_min or
+                big_x_max < little_x_max or big_y_max < little_y_max)
 
     def __init__(self, size=50, block_height=5, block_width=5, speed=1,
-            player_size=2, header_height=None, move_speed=1):
+            player_size=2, header_height=None, move_speed=None):
 
         if type(size) == int:
             assert(size > 0), "Size must be greater than 0"
@@ -21,13 +36,28 @@ class Game(object):
         else:
             assert(False), "Size is the wrong type"
 
+        if type(player_size) == int:
+            assert(player_size > 0), "Size must be greater than 0"
+            player_size_x = player_size
+            player_size_y = player_size
+        elif isinstance(player_size, tuple):
+            player_size_x = player_size[0]
+            player_size_y = player_size[1]
+            assert(player_size_x > 0), "Size must be greater than 0"
+            assert(player_size_y > 0), "Size must be greater than 0"
+        else:
+            assert(False), "Size is the wrong type"
+
 
         # Output
         self.boards = []
         self.actions = []
         self.turn = 0
         self.game_over = False
-        self.move_speed = move_speed
+        if move_speed is None:
+            self.move_speed = 1
+        else:
+            self.move_speed = move_speed
 
         # Create Board parameters
         self.board = np.empty((size_x,size_y))
@@ -82,7 +112,7 @@ class Game(object):
         self.player = {}
         self.player['top_left'] = (0,0)
         self.player['color'] = random.randrange(0,255)
-        self.player['size'] = (3, 3)
+        self.player['size'] = (player_size_x, player_size_y)
         self.player['block_on'] = header
 
         self.render()
@@ -111,6 +141,8 @@ class Game(object):
         scipy.misc.toimage(self.board).save('output' + str(self.turn) + '.png')
 
     def next_turn(self):
+        if self.game_over:
+            return
         self.update_locations()
         self.make_move()
         self.render()
@@ -119,41 +151,38 @@ class Game(object):
         if self.game_over:
             return
 
-        (player_x_min, player_y_min) = self.player['top_left']
-        (player_size_x, player_size_y) = self.player['size']
-        (player_x_max, player_x_max) = (player_x_min + player_size_x,
-                player_y_min + player_size_y)
+        player_block = self.player['block_on']
+        possible_moves = [(0,1), (1,0), (0,-1), (-1,0)]
 
-        block = self.player['block_on']
-        (box_x_min, box_y_min) = block['top_left']
-        (box_size_x, box_size_y) = block['size']
-        (box_x_max, box_x_max) = (box_x_min + box_size_x,
-                box_y_min + box_size_y)
+        moves = sorted(possible_moves, key=lambda k: random.random())
 
-        # Get all possible moves
-        possible_moves = []
-        # 0 is right
-        # 1 is down
-        # 2 is left
-        # 3 is up
-        # 4 skip block right
-        # 5 skip block down
-        # 6 skip block left
-        # 7 skip block up
+        # Tries moving in each random direction
+        for move in moves:
+            delx = move[0]*self.move_speed
+            dely = move[1]*self.block_height*2
+            new_player = self.player.copy()
+            new_player['top_left'] = (self.player['top_left'][0] + delx,
+                    self.player['top_left'][1] + dely)
+            if dely == 0:
+                # Movin Horizonatlly
+                (min_x, min_y) = new_player['top_left']
+                if(min_x < 0 or min_x >= self.size_x):
+                    continue
 
-        if(player_x_max + self.move_speed <  box_x_max):
-            possible_moves.append(0)
+                if Game.in_square(player_block, new_player):
+                    self.player = new_player
+                    self.actions.append(possible_moves.index(move))
+                    return
+            else:
+                for block in self.boxes:
+                    if Game.in_square(block, new_player):
+                        self.player = new_player
+                        self.player['block_on'] = block
+                        self.actions.append(possible_moves.index(move))
+                        return
 
-        if(player_y_max + self.move_speed <  box_y_max):
-            possible_moves.append(1)
-
-        if(player_x_min - self.move_speed <  box_x_min):
-            possible_moves.append(2)
-
-
-        if(player_y_min - self.move_speed <  boy_y_min):
-            possible_moves.append(3)
-        pass
+        self.actions.append(5)
+        return
 
     def set_color(self, x, y, color):
         if (x < 0 or x >= self.size_x):
@@ -219,6 +248,7 @@ class Game(object):
 
 yay = Game()
 start_time = time.time()
-yay.run_until_over()
+for i in range(100):
+    yay.next_turn()
 end_time = time.time()
 print("Time elapsed: " + str(end_time-start_time))
