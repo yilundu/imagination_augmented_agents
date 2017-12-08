@@ -22,8 +22,8 @@ class Game(object):
                 big_x_max < little_x_max or big_y_max < little_y_max)
 
     def __init__(self, size=50, block_height=5, block_width=5, speed=1,
-            player_size=2, header_height=None, move_speed=None):
-
+            player_size=2, header_height=None, move_speed=None, toPNG=True):
+        self.toPNG = toPNG
         if type(size) == int:
             assert(size > 0), "Size must be greater than 0"
             size_x = size
@@ -61,6 +61,7 @@ class Game(object):
 
         # Create Board parameters
         self.board = np.empty((size_x,size_y))
+        self.board_color = random.randrange(0, 255)
         self.size_y = size_x
         self.size_x = size_y
 
@@ -77,10 +78,22 @@ class Game(object):
         self.block_height = block_height
         self.block_width = block_width
 
-        #create header
+        #Player
         header = {}
+        self.player = {}
+
+        self.player['top_left'] = (random.randrange(0, size - 1), 0)
+        self.player['color'] = random.randrange(0,255)
+        while(abs(self.player['color'] - self.board_color) < 30):
+            self.player['color'] = random.randrange(0, 255)
+        self.player['size'] = (player_size_x, player_size_y)
+        self.player['block_on'] = header
+
+        #create header
         header['top_left'] = (0,0)
         header['color'] = random.randrange(0,255)
+        while(abs(header['color'] - self.board_color) < 50 or abs(header['color'] - self.player['color']) < 70):
+            header['color'] = random.randrange(0, 255)
         if header_height is None:
             header_size_y = block_height
         else:
@@ -103,17 +116,12 @@ class Game(object):
                 else:
                     box['speed'] = -speed
 
-                box['color'] = random.randrange(0,255)
+                box['color'] = random.randrange(0, 255)
+                while(abs(box['color'] - self.board_color) < 50 or abs(box['color'] - self.player['color']) < 70):
+                    box['color'] = random.randrange(0, 255)
                 box['top_left'] = (x, y)
                 box['size'] = (block_width, block_height)
                 self.boxes.append(box)
-
-        #Player
-        self.player = {}
-        self.player['top_left'] = (0,0)
-        self.player['color'] = random.randrange(0,255)
-        self.player['size'] = (player_size_x, player_size_y)
-        self.player['block_on'] = header
 
         self.render()
 
@@ -121,7 +129,7 @@ class Game(object):
         assert(self.boxes is not None)
         for x in range(self.size_x):
             for y in range(self.size_y):
-                self.board[y][x] = random.randrange(0,255)
+                self.board[y][x] = self.board_color
 
         for box in self.boxes:
             (x_min, y_min) = box['top_left']
@@ -138,13 +146,14 @@ class Game(object):
 
         self.boards.append(self.board)
         self.turn += 1
-        scipy.misc.toimage(self.board).save('output' + str(self.turn) + '.png')
+        if self.toPNG:
+            scipy.misc.toimage(self.board).save('output' + str(self.turn) + '.png')
 
     def next_turn(self):
         if self.game_over:
             return
-        self.update_locations()
         self.make_move()
+        self.update_locations()
         self.render()
 
     def make_move(self):
@@ -170,7 +179,9 @@ class Game(object):
                     continue
 
                 if Game.in_square(player_block, new_player):
+                    old_block = self.player['block_on']
                     self.player = new_player
+                    self.player['block_on'] = old_block
                     self.actions.append(possible_moves.index(move))
                     return
             else:
@@ -180,7 +191,6 @@ class Game(object):
                         self.player['block_on'] = block
                         self.actions.append(possible_moves.index(move))
                         return
-
         self.actions.append(5)
         return
 
@@ -194,7 +204,7 @@ class Game(object):
     def update_locations(self):
         new_boxes = []
         (player_x_min, player_y_min) = self.player['top_left']
-
+        self.player['block_on'] = self.player['block_on'].copy()
         # Update block locations
         for box in self.boxes:
             (x_min, y_min) = box['top_left']
@@ -206,15 +216,20 @@ class Game(object):
 
 
             x_min += speed #Update x_min
+            box['top_left'] = (x_min, y_min)
 
             new_box = box.copy()
 
             #Check if we are on screen and gerenate new_block
             if x_min >= self.size_x:
-                new_box['color'] = random.randrange(0,255)
+                new_box['color'] = random.randrange(0, 255)
+                while(abs(new_box['color'] - self.board_color) < 50 or abs(new_box['color'] - self.player['color']) < 70):
+                    new_box['color'] = random.randrange(0, 255)
                 x_min = 0
             elif x_max < 0:
-                new_box['color'] = random.randrange(0,255)
+                new_box['color'] = random.randrange(0, 255)
+                while(abs(new_box['color'] - self.board_color) < 50 or abs(new_box['color'] - self.player['color']) < 70):
+                    new_box['color'] = random.randrange(0, 255)
                 x_min = self.size_x - 1 - size_x
 
             # Add block to new_list
@@ -225,6 +240,8 @@ class Game(object):
         block = self.player['block_on']
         speed = block['speed']
         self.player['top_left'] = (player_x_min+speed, player_y_min)
+        block['top_left'] = (block['top_left'][0]+speed, block['top_left'][1])
+        # print(self.turn, " ", block['top_left'], " ", self.player['top_left'])
 
 
         (player_x_min, player_y_min) = self.player['top_left']
@@ -235,7 +252,7 @@ class Game(object):
 
         self.boxes = new_boxes
 
-        self.render()
+        # self.render()
 
     def get_outputs(self):
         return zip(self.boards, self.actions)
@@ -246,9 +263,14 @@ class Game(object):
         print(self.turn)
 
 
-yay = Game()
-start_time = time.time()
-for i in range(100):
-    yay.next_turn()
-end_time = time.time()
-print("Time elapsed: " + str(end_time-start_time))
+if __name__ == '__main__':
+    yay = Game()
+    start_time = time.time()
+    count = 0
+    for i in range(300):
+        if not yay.game_over:
+            yay.next_turn()
+            # print(yay.turn, " ", yay.player['block_on']['top_left'])#['top_left'])
+        count += 1
+    end_time = time.time()
+    print("Time elapsed: " + str(end_time-start_time))
