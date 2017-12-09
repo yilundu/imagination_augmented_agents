@@ -27,11 +27,11 @@ class EnvModel(nn.Module):
        , predicts the subsequent frame"""
     def __init__(self, num_channels=4):
         super(EnvModel, self).__init__()
-        self.conv1 = nn.Conv2d(num_channels, 32, 3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(32, 32, 3, stride=1, padding=1)
-        self.conv3 = nn.Conv2d(32, 32, 3, stride=1, padding=1)
-        self.conv4 = nn.Conv2d(32, 32, 3, stride=1, padding=1)
-        self.conv_predict = nn.Conv2d(32, 3, 3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(num_channels, 64, 3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(64, 96, 3, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(96, 96, 3, stride=1, padding=1)
+        self.conv4 = nn.Conv2d(96, 96, 3, stride=1, padding=1)
+        self.conv_predict = nn.Conv2d(96, 1, 3, stride=1, padding=1)
 
         self.apply(weights_init)
 
