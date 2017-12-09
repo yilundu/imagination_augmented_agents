@@ -31,7 +31,7 @@ class EnvModel(nn.Module):
         self.conv2 = nn.Conv2d(32, 32, 3, stride=1, padding=1)
         self.conv3 = nn.Conv2d(32, 32, 3, stride=1, padding=1)
         self.conv4 = nn.Conv2d(32, 32, 3, stride=1, padding=1)
-        self.conv_predict = nn.Conv2d(32, 3, 3, stride=1, padding=1)
+        self.conv_predict = nn.Conv2d(32, 1, 3, stride=1, padding=1)
 
         self.apply(weights_init)
 
@@ -67,7 +67,6 @@ class ModelFree(nn.Module):
         x = F.elu(self.conv2(x))
         x = F.elu(self.conv3(x))
         x = F.elu(self.conv4(x))
-        print("Size of output", x.size())
 
         x = x.view(-1, hp.model_conv_output_dim)
         return self.actor_linear(x), self.embed_linear(x)
@@ -83,6 +82,12 @@ class I3A(nn.Module):
         self.lstm = nn.LSTM(hp.joint_input_dim, hp.lstm_output_dim)
         self.critic_linear = nn.Linear(hp.lstm_output_dim, 1)
         self.actor_linear = nn.Linear(hp.lstm_output_dim, actions)
+
+        # Encoder convolution network
+        self.e_conv1 = nn.Conv2d(1, 32, 3, stride=2, padding=1)
+        self.e_conv2 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
+        self.e_conv3 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
+        self.e_conv4 = nn.Conv2d(32, 16, 3, stride=2, padding=1)
 
         self.apply(weights_init)
         self.actor_linear.weight.data = normalized_columns_initializer(
@@ -116,36 +121,35 @@ class I3A(nn.Module):
             traj_encodings += [self.sample_env(input, hp.traj_length)]
 
         traj_encoding = torch.cat(traj_encodings, dim=1)
-        model_free_encoding = self.model_free(input)
+        m_free_log, model_free_encoding = self.model_free(input)
 
         combined_enc = torch.cat([traj_encoding, model_free_encoding], dim=1)
-        hx, cx = self.lstm(emb, (hx, cx))
-        x = hx
 
-        return self.critic_linear(x), self.actor_linear(x), (hx, cx)
+        hx, cx = self.lstm(combined_enc, (hx, cx))
+        x = hx.view(-1, hp.lstm_output_dim)
+
+        return self.critic_linear(x), self.actor_linear(x), m_free_log, (hx, cx)
 
 
     def sample_env(self, input, n):
         """Input should be nx3x50x50 tensor of the past 3 states observed"""
         frames = list(torch.split(input, 1, 1))
+        batch_size = input.size(0)
 
         # First generate our list of observations
         for i in range(n):
             input = torch.cat(frames[i:i+3], dim=1)
             actions, _ = self.model_free(input)
-            print("Action shapes, ", actions.size())
 
             # For stability, detach the gradient calculated for actions
             actions = F.softmax(actions)
-            actions = actions.multinomial()
-            print("Action shapes, ", actions.size())
+            actions = actions.multinomial().float()
             actions = actions.detach()
 
-            action_conv = actions.view(-1, 1, 1, 1)
-            action_conv = action_conv.expand(-1, 1, 50, 50)
+            action_conv = actions.view(batch_size, 1, 1, 1).contiguous()
+            action_conv = action_conv.expand(batch_size, 1, 50, 50).contiguous()
 
-            conv_input = torch.cat([input, action_conv], dim=1)
-            print("Conv input, ", conv_input.size())
+            conv_input = torch.cat([input, action_conv], 1)
 
             o_frame = self.env_model(conv_input)
             frames.append(o_frame)
@@ -154,14 +158,21 @@ class I3A(nn.Module):
         frames = frames[3:]
         frames_rev = frames[::-1]
 
-        frame_seq = torch.stack(frames_rev, dim=1)
-        frame_seq = frame_seq.transpose(0, 1).contiguous()
+        # Each frame should now be nx1x50x50
+        frame_seq = torch.cat(frames_rev, dim=1)
+        # Now each frame is size n x traj_len x 50 x 50
+        frame_seq = frame_seq.view(-1, 1, 50, 50)
+        # Feed through convolutional networks
+        x = F.elu(self.e_conv1(frame_seq))
+        x = F.elu(self.e_conv2(x))
+        x = F.elu(self.e_conv3(x))
+        x = F.elu(self.e_conv4(x))
+
+        frame_seq = x.view(batch_size, hp.traj_length, -1)
+        frame_seq = frame_seq.transpose(0, 1)
         output, (hx, cx) = self.encoder_lstm(frame_seq)
 
         cx = cx.transpose(0, 1).contiguous()
         batch_size = cx.size(0)
-        print(cx.shape)
 
         return cx.view(-1, hp.encoder_output_dim)
-
-
