@@ -19,7 +19,7 @@ class PretrainDataset(Dataset):
         # self.normalize = transforms.Normalize(
         #     mean=[0.485, 0.456, 0.406],
         #     std=[0.229, 0.224, 0.225])
-        self.normalize = transforms.Normalize(mean=[0.446], std=[0.226])
+        self.normalize = transforms.NormalizeTensor(mean=0.446, std=0.226)
 
         # transform = [
         #     transforms.Scale(256),
@@ -27,7 +27,8 @@ class PretrainDataset(Dataset):
         #     # transforms.RandomResizedCrop(224)
         #     ]
 
-        transform = [transforms.ToTensor()]
+        transform = []
+        # transform = [transforms.ToTensor()]
 
         transform += [
             self.normalize]
@@ -55,16 +56,21 @@ class PretrainDataset(Dataset):
         # img_data = np.transpose(image[:3], (1, 2, 0))
         # img_data = image
         # img_tensor = self.preprocess(Image.fromarray(img_data))#   , 'RGB'))
-        imgs = [self.preprocess(Image.fromarray(image[i], 'L')) for i in range(3)]
+        imgs = [self.preprocess(torch.FloatTensor(image[i])).unsqueeze_(0) for i in range(3)]
+        # imgs = [self.preprocess(Image.fromarray(image[i], 'L')) for i in range(3)]
         action_tensor = torch.FloatTensor(image[3:])
 
         label = self.labels[index].astype(np.float32)
         # print(label.shape)
-        label_tensor = self.preprocess(Image.fromarray(label, 'L'))
+        label_tensor = self.preprocess(torch.FloatTensor(label))
+        # print(label_tensor)
+        # label_tensor = self.preprocess(Image.fromarray(label, 'L'))
         # label_tensor = torch.FloatTensor(np.array([label]))#.astype(int))
 
         # print(img_tensor.size())
+        # print(imgs[0].size())
         # print(action_tensor.size())
+        # print(label_tensor.size())
         return torch.cat((imgs[0], imgs[1], imgs[2], action_tensor), 0), label_tensor
 
     def __len__(self):

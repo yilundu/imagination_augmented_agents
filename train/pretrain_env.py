@@ -179,7 +179,11 @@ if __name__ == '__main__':
         losses = []
         losses_2 = []
         losses_3 = []
+        count = 0
         for images, labels in tqdm(loaders['train'], desc = 'epoch %d' % (epoch + 1)):
+            count += 1
+            if count > 20:
+                continue
             # convert images and labels into cuda tensor
             images = Variable(images.cuda()).float()
             labels = Variable(labels.cuda())
@@ -236,12 +240,18 @@ if __name__ == '__main__':
         model.eval()
         img = data['train'][0][0].unsqueeze_(0)
         for time_step in range(10):
-            print(img.size())
+            # print(img.size())
             images = Variable(img.cuda()).float()
             outputs = model.forward(images).data[0][0].cpu()
 
             next_frame = data['train'][time_step + 1][0]
-            print((img[0][1], img[0][2], outputs, next_frame[3]))
+            # print((img[0][1], img[0][2], outputs, next_frame[3]))
             img = torch.stack((img[0][1], img[0][2], outputs, next_frame[3]), 0).unsqueeze_(0)
+
+            baseline_frame = data['train'][time_step][1].numpy()
+            # print(baseline_frame.shape)
+            print(baseline_frame)
+            scipy.misc.toimage(baseline_frame).save('images/baseline' + str(epoch + 1) + '-' + str(time_step + 1) + '.png')
+
             scipy.misc.toimage(outputs.numpy()).save('images/output' + str(epoch + 1) + '-' + str(time_step + 1) + '.png')
             print("Wrote to ", 'images/output' + str(epoch + 1) + '-' + str(time_step + 1) + '.png')

@@ -161,6 +161,10 @@ def normalize(tensor, mean, std):
         t.sub_(m).div_(s)
     return tensor
 
+def normalize_tensor(tensor, mean, std):
+    # for t, m, s in zip(tensor, mean, std):
+    tensor.div_(255.0).sub_(mean).div_(std)
+    return tensor
 
 def resize(img, size, interpolation=Image.BILINEAR):
     """Resize the input PIL Image to the given size.
@@ -635,6 +639,30 @@ class Normalize(object):
         """
         return normalize(tensor, self.mean, self.std)
 
+class NormalizeTensor(object):
+    """Normalize an tensor image with mean and standard deviation.
+    Given mean: ``(M1,...,Mn)`` and std: ``(M1,..,Mn)`` for ``n`` channels, this transform
+    will normalize each channel of the input ``torch.*Tensor`` i.e.
+    ``input[channel] = (input[channel] - mean[channel]) / std[channel]``
+
+    Args:
+        mean (sequence): Sequence of means for each channel.
+        std (sequence): Sequence of standard deviations for each channel.
+    """
+
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, tensor):
+        """
+        Args:
+            tensor (Tensor): Tensor image of size (C, H, W) to be normalized.
+
+        Returns:
+            Tensor: Normalized Tensor image.
+        """
+        return normalize_tensor(tensor, self.mean, self.std)
 
 class Resize(object):
     """Resize the input PIL Image to the given size.

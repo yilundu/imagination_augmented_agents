@@ -107,9 +107,13 @@ class Game(object):
         # There is ablock every other row
         for row in range(2, self.size_y//block_height, 2):
             y = row*block_height
-            for x in range(0, block_width*num_block_in_row*2,
+            for x in range(0, block_width*(num_block_in_row)*2,
                     block_width*2):
                 box = {}
+                # if row % 4 == 0 and x == block_width*(num_block_in_row)*2:
+                #     continue
+                # if row % 4 == 2 and x == -block_width * 2:
+                #     continue
 
                 if row % 4 == 0:
                     box['speed'] = speed
@@ -144,7 +148,7 @@ class Game(object):
             for y in range(y_min, y_min+size_y):
                 self.set_color(x, y, self.player['color'])
 
-        self.boards.append(self.board)
+        self.boards.append(self.board.copy())
         self.turn += 1
         if self.toPNG:
             scipy.misc.toimage(self.board).save('output' + str(self.turn) + '.png')
@@ -221,20 +225,39 @@ class Game(object):
             new_box = box.copy()
 
             #Check if we are on screen and gerenate new_block
-            if x_min >= self.size_x:
-                new_box['color'] = random.randrange(0, 255)
-                while(abs(new_box['color'] - self.board_color) < 50 or abs(new_box['color'] - self.player['color']) < 70):
-                    new_box['color'] = random.randrange(0, 255)
-                x_min = 0
-            elif x_max < 0:
-                new_box['color'] = random.randrange(0, 255)
-                while(abs(new_box['color'] - self.board_color) < 50 or abs(new_box['color'] - self.player['color']) < 70):
-                    new_box['color'] = random.randrange(0, 255)
-                x_min = self.size_x - 1 - size_x
+            if speed == 1 and x_min == self.block_width + 1:
+                new_box_2 = box.copy()
+                new_box_2['color'] = random.randrange(0, 255)
+                while(abs(new_box_2['color'] - self.board_color) < 50 or abs(new_box_2['color'] - self.player['color']) < 70):
+                    new_box_2['color'] = random.randrange(0, 255)
+                new_box_2['top_left'] = (1 - self.block_width, new_box_2['top_left'][1])
+
+                new_boxes.append(new_box_2)
+
+            if speed == -1 and x_max == self.size_x - self.block_width:
+                new_box_2 = box.copy()
+                new_box_2['color'] = random.randrange(0, 255)
+                while(abs(new_box_2['color'] - self.board_color) < 50 or abs(new_box_2['color'] - self.player['color']) < 70):
+                    new_box_2['color'] = random.randrange(0, 255)
+                new_box_2['top_left'] = (self.size_x - 1, new_box_2['top_left'][1])
+
+                new_boxes.append(new_box_2)
+
+            # if x_min >= self.size_x:
+            #     new_box['color'] = random.randrange(0, 255)
+            #     while(abs(new_box['color'] - self.board_color) < 50 or abs(new_box['color'] - self.player['color']) < 70):
+            #         new_box['color'] = random.randrange(0, 255)
+            #     x_min = -2 * self.block_width
+            # elif x_max < 0:
+            #     new_box['color'] = random.randrange(0, 255)
+            #     while(abs(new_box['color'] - self.board_color) < 50 or abs(new_box['color'] - self.player['color']) < 70):
+            #         new_box['color'] = random.randrange(0, 255)
+            #     x_min = self.size_x - 1 - size_x + 2 * self.block_width
 
             # Add block to new_list
-            new_box['top_left'] = (x_min, y_min)
-            new_boxes.append(new_box)
+            if x_min < self.size_x and x_max >= 0:
+                new_box['top_left'] = (x_min, y_min)
+                new_boxes.append(new_box)
 
         #update player location
         block = self.player['block_on']
