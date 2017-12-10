@@ -80,6 +80,8 @@ class I3A(nn.Module):
         self.env_model = env_model
 
         self.lstm = nn.LSTM(hp.joint_input_dim, hp.lstm_output_dim)
+        # State size represents the size of LSTM cell state
+        self.state_size = hp.lstm_output_dim
         self.critic_linear = nn.Linear(hp.lstm_output_dim, 1)
         self.actor_linear = nn.Linear(hp.lstm_output_dim, actions)
 
@@ -114,7 +116,7 @@ class I3A(nn.Module):
         self.train()
 
     def forward(self, inputs):
-        (input, (hx, cx)) = inputs
+        (input, (hx, cx), mask) = inputs
         traj_encodings = []
 
         for i in range(hp.traj_num):
@@ -124,8 +126,17 @@ class I3A(nn.Module):
         m_free_log, model_free_encoding = self.model_free(input)
 
         combined_enc = torch.cat([traj_encoding, model_free_encoding], dim=1)
+        hx = hx * mask
+        cx = cx * mask
 
-        hx, cx = self.lstm(combined_enc, (hx, cx))
+        if len(hx.size()) == 2:
+            hx = hx.unsqueeze(0)
+            cx = cx.unsqueeze(0)
+            combined_enc = combined_enc.unsqueeze(0)
+
+        # print("Input dimension is, ", input.size())
+        # print("Encoding dimension is, ", combined_enc.size())
+        _, (hx, cx) = self.lstm(combined_enc, (hx, cx))
         x = hx.view(-1, hp.lstm_output_dim)
 
         return self.critic_linear(x), self.actor_linear(x), m_free_log, (hx, cx)
