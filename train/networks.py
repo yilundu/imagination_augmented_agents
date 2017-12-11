@@ -126,18 +126,32 @@ class I3A(nn.Module):
         m_free_log, model_free_encoding = self.model_free(input)
 
         combined_enc = torch.cat([traj_encoding, model_free_encoding], dim=1)
-        hx = hx * mask
-        cx = cx * mask
+
+        if input.size(0) == hx.size(0):
+            hx = hx * mask
+            cx = cx * mask
+        else:
+            # Compact representation to show states
+            mask = mask.view(-1, hx.size(0), 1)
+            combined_enc = combined_enc.view(-1, hx.size(0), combined_enc.size(1))
+            hx = hx.contiguous().view(1, hx.size(0), -1).contiguous()
+            cx = cx.contiguous().view(1, cx.size(0), -1).contiguous()
 
         if len(hx.size()) == 2:
             hx = hx.unsqueeze(0)
             cx = cx.unsqueeze(0)
             combined_enc = combined_enc.unsqueeze(0)
 
-        # print("Input dimension is, ", input.size())
-        # print("Encoding dimension is, ", combined_enc.size())
-        _, (hx, cx) = self.lstm(combined_enc, (hx, cx))
-        x = hx.view(-1, hp.lstm_output_dim)
+            x, (hx, cx) = self.lstm(combined_enc, (hx, cx))
+            x = x.view(-1, hp.lstm_output_dim)
+        else:
+            # We have something with masks
+            outputs = []
+            for i in range(combined_enc.size(0)):
+                _, (hx, cx) = self.lstm(combined_enc[i:i+1], (hx * mask[i], cx * mask[i]))
+                outputs.append(hx)
+            x = torch.cat(outputs, 0)
+            x = x.view(-1, hp.lstm_output_dim)
 
         return self.critic_linear(x), self.actor_linear(x), m_free_log, (hx, cx)
 

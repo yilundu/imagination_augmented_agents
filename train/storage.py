@@ -45,18 +45,12 @@ class RolloutStorage(object):
         self.masks[0].copy_(self.masks[-1])
 
     def compute_returns(self, next_value, gamma, tau):
-        if use_gae:
-            self.value_preds[-1] = next_value
-            gae = 0
-            for step in reversed(range(self.rewards.size(0))):
-                delta = self.rewards[step] + gamma * self.value_preds[step + 1] * self.masks[step + 1] - self.value_preds[step]
-                gae = delta + gamma * tau * self.masks[step + 1] * gae
-                self.returns[step] = gae + self.value_preds[step]
-        else:
-            self.returns[-1] = next_value
-            for step in reversed(range(self.rewards.size(0))):
-                self.returns[step] = self.returns[step + 1] * \
-                    gamma * self.masks[step + 1] + self.rewards[step]
+        self.value_preds[-1] = next_value
+        gae = 0
+        for step in reversed(range(self.rewards.size(0))):
+            delta = self.rewards[step] + gamma * self.value_preds[step + 1] * self.masks[step + 1] - self.value_preds[step]
+            gae = delta + gamma * tau * self.masks[step + 1] * gae
+            self.returns[step] = gae + self.value_preds[step]
 
 
     def feed_forward_generator(self, advantages, num_mini_batch):
@@ -95,6 +89,8 @@ class RolloutStorage(object):
             old_action_log_probs_batch = []
             adv_targ = []
 
+            print("Number of envs is, ", num_envs_per_batch)
+
             for offset in range(num_envs_per_batch):
                 ind = perm[start_ind + offset]
                 observations_batch.append(self.observations[:-1, ind])
@@ -112,6 +108,10 @@ class RolloutStorage(object):
             masks_batch = torch.cat(masks_batch, 0)
             old_action_log_probs_batch = torch.cat(old_action_log_probs_batch, 0)
             adv_targ = torch.cat(adv_targ, 0)
+
+            print("Masks_batch size, ", masks_batch.size())
+            print("States_batch size, ", states_batch.size())
+            print("Observation_batch size, ", observations_batch.size())
 
             yield observations_batch, states_batch, actions_batch, \
                 return_batch, masks_batch, old_action_log_probs_batch, adv_targ

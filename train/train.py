@@ -7,6 +7,7 @@ import numpy as np
 
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
 from torch.autograd import Variable
 
 from networks import EnvModel, I3A
@@ -49,12 +50,12 @@ if __name__ == '__main__':
 
     # training
     parser.add_argument('--num-frames', default = 1e7, type = int)
-    parser.add_argument('--minibatch', default = 32, type = int)
+    parser.add_argument('--minibatch', default = 16, type = int)
     parser.add_argument('--eval', default = 500, type = int)
     parser.add_argument('--snapshot', default = 500, type = int)
     parser.add_argument('--gpu', default = '7')
     parser.add_argument('--env-path', default = None)
-    parser.add_argument('--num-train', default = 16, type = int,
+    parser.add_argument('--num-train', default = 32, type = int,
                         help="Number of different gym instances to gen data")
     parser.add_argument('--forward-steps', default = 5, type = int,
                         help="Number of forward frames to simulate")
@@ -66,6 +67,8 @@ if __name__ == '__main__':
                         help="Number of times to process data")
     parser.add_argument('--tau', type=float, default=0.95,
                         help='gae parameter (default: 0.95)')
+    parser.add_argument('--gamma', type=float, default=0.9,
+                        help='decay rate')
     parser.add_argument('--entropy-coef', type=float, default=0.01,
                         help='entropy term coefficient (default: 0.01)')
     parser.add_argument('--value-loss-coef', type=float, default=0.5,
@@ -133,7 +136,6 @@ if __name__ == '__main__':
     envs = SubprocVecEnv(envs)
     print('==> environment setup')
 
-    print(envs.action_space)
     obs_shape = envs.observation_space.shape
 
     # State size is represented is 200 hidden size, 200 cell size
@@ -167,9 +169,10 @@ if __name__ == '__main__':
                                                                       (Variable(hx, volatile=True), Variable(cx, volatile=True)),
                                                                       Variable(rollouts.masks[step], volatile=True)))
             action_probs = F.softmax(action_logit)
-            action_log_prob = F.log_softmax(action_logit)
-            action = action_probs.multinomial()
-            cpu_actions = action.data.squeeze(1).cpu().numpy()
+            log_probs = F.log_softmax(action_logit)
+            actions = action_probs.multinomial()
+            action_log_probs = log_probs.gather(1, actions)
+            cpu_actions = actions.data.squeeze(1).cpu().numpy()
 
             # Obser reward and next obs
             obs, reward, done, info = envs.step(cpu_actions)
@@ -192,12 +195,12 @@ if __name__ == '__main__':
             states = torch.cat([state.data for state in states], 2)
 
             update_current_obs(obs)
-            rollouts.insert(step, current_obs, states.squeeze(0), action.data, action_log_prob.data, value.data, reward, masks)
+            rollouts.insert(step, current_obs, states.squeeze(0), actions.data, action_log_probs.data, value.data, reward, masks)
 
         hx, cx = rollouts.states[-1].split(model.state_size, 1)
-        next_value = model(Variable(rollouts.observations[-1], volatile=True),
+        next_value = model.forward((Variable(rollouts.observations[-1], volatile=True),
                                   (Variable(hx), Variable(cx)),
-                                  Variable(rollouts.masks[-1], volatile=True))[0].data
+                                  Variable(rollouts.masks[-1], volatile=True)))[0].data
 
         rollouts.compute_returns(next_value, args.gamma, args.tau)
 
@@ -207,7 +210,7 @@ if __name__ == '__main__':
 
         for e in range(args.ppo_epoch):
             data_generator = rollouts.recurrent_generator(advantages,
-                                                    args.num_mini_batch)
+                                                    args.minibatch)
 
             for sample in data_generator:
                 observations_batch, states_batch, actions_batch, \
@@ -215,13 +218,13 @@ if __name__ == '__main__':
                         adv_targ = sample
 
                 # Reshape to do in a single forward pass for all steps
-                hx, cx = rollouts.states[-1].split(model.state_size, 1)
-                values, logits, _, states = model.forward(Variable(observations_batch),
+                hx, cx = states_batch.split(model.state_size, 1)
+                values, logits, _, states = model.forward((Variable(observations_batch),
                                                                                                (Variable(hx), Variable(cx)),
-                                                                                               Variable(masks_batch))
+                                                                                               Variable(masks_batch)))
 
                 # Compute action probabilities and entropy distance
-                action_log_probs, dist_entropy = logprobs_and_entropy(logits, actions_batch)
+                action_log_probs, dist_entropy = logprobs_and_entropy(logits, Variable(actions_batch))
 
                 adv_targ = Variable(adv_targ)
                 ratio = torch.exp(action_log_probs - Variable(old_action_log_probs_batch))
@@ -252,4 +255,4 @@ if __name__ == '__main__':
                 'optimizer': optimizer.state_dict()
             }
             torch.save(snapshot, os.path.join())
-            print('==> saved snapshot to "{0}"'.format(os.path.join(exp_path, 'model_{}.pth'.format(frame_num))))
+            print('==> saved snapshot to "{0}"'.format(os.path.join(exp_path, 'model_{}.pth'.foomat(frame_num))))
