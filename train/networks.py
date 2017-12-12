@@ -21,27 +21,70 @@ def weights_init(m):
     elif isinstance(m, nn.Linear):
         m.bias.data.zero_()
 
+def weights_init_2(m):
+    if isinstance(m, nn.Conv1d) or isinstance(m, nn.Conv2d) or isinstance(m, nn.Conv3d):
+        nn.init.xavier_normal(m.weight.data, gain=1.0)
+        m.bias.data.zero_()
+    elif isinstance(m, nn.BatchNorm1d) or isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm3d):
+        pass
+        # nn.init.xavier_normal(m.weight.data, gain=1.0)
+        # m.bias.data.zero_()
+    elif isinstance(m, nn.Linear):
+        nn.init.xavier_normal(m.weight.data, gain=1.0)
+        m.bias.data.zero_()
 
 class EnvModel(nn.Module):
     """Network which given an input image frame consisting of last 3 frames and action
        , predicts the subsequent frame"""
     def __init__(self, num_channels=4):
         super(EnvModel, self).__init__()
-        self.conv1 = nn.Conv2d(num_channels, 64, 3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(num_channels, 64, 5, stride=1, padding=2)
         self.conv2 = nn.Conv2d(64, 96, 3, stride=1, padding=1)
-        self.conv3 = nn.Conv2d(96, 96, 3, stride=1, padding=1)
-        self.conv4 = nn.Conv2d(96, 96, 3, stride=1, padding=1)
-        self.conv_predict = nn.Conv2d(96, 1, 3, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(96, 64, 3, stride=1, padding=1)
+        self.conv4 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
+        self.conv5 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
+        # self.conv6 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.conv_predict = nn.Conv2d(64, 1, 3, stride=1, padding=1)
 
-        self.apply(weights_init)
+        self.apply(weights_init_2)
+        # weights_init_2(self.conv1)
+        # weights_init_2(self.conv_predict)
 
     def forward(self, input):
         x = F.elu(self.conv1(input))
         x = F.elu(self.conv2(x))
         x = F.elu(self.conv3(x))
         x = F.elu(self.conv4(x))
+        x = F.elu(self.conv5(x))
+        # x = F.elu(self.conv6(x))
+        x = self.bn1(x)
         x = self.conv_predict(x)
 
+        return x
+
+class AdvModel(nn.Module):
+    def __init__(self, num_channels=1):
+        super(AdvModel, self).__init__()
+        self.conv1 = nn.Conv2d(num_channels, 8, 3, stride=1)
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv2 = nn.Conv2d(8, 8, 3, stride=1)
+
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.dropout = nn.Dropout(0.5)
+        self.fc = nn.Linear(8 * 11 * 11, 2)
+
+        self.apply(weights_init_2)
+
+    def forward(self, input):
+        x = F.elu(self.conv1(input))
+        x = self.pool1(x)
+        x = F.elu(self.conv2(x))
+        x = self.pool2(x)
+        # print(x.size())
+        x = x.view(x.size(0), -1)
+        x = self.dropout(x)
+        x = self.fc(x)
         return x
 
 
