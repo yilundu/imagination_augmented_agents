@@ -195,7 +195,7 @@ class Game(object):
                         self.player['block_on'] = block
                         self.actions.append(possible_moves.index(move))
                         return
-        self.actions.append(5)
+        self.actions.append(4)
         return
 
     def set_color(self, x, y, color):

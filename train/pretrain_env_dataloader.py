@@ -58,8 +58,11 @@ class PretrainDataset(Dataset):
         # img_tensor = self.preprocess(Image.fromarray(img_data))#   , 'RGB'))
         imgs = [self.preprocess(torch.FloatTensor(image[i])).unsqueeze_(0) for i in range(3)]
         # imgs = [self.preprocess(Image.fromarray(image[i], 'L')) for i in range(3)]
-        action_tensor = torch.FloatTensor(image[3:])
-
+        #action_tensor = torch.FloatTensor(image[3:])
+        action_tensor = [torch.FloatTensor(np.tile(1 if image[3][0][0] == i else 0, (50, 50))) for i in range(5)]
+        # print(len(action_tensor))
+        action_tensor = torch.stack(action_tensor)
+        # print(action_tensor.size())
         label = self.labels[index].astype(np.float32)
         # print(label.shape)
         label_tensor = self.preprocess(torch.FloatTensor(label))
