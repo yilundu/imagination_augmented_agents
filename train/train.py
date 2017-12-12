@@ -103,6 +103,15 @@ if __name__ == '__main__':
             print('[{0}] = {1}'.format(key, getattr(args, key)), file=f)
     args.num_frames = int(args.num_frames)
 
+    # Set up Environment
+    envs = [make_env(args.env, args.seed, i) for i in range(args.num_train)]
+    envs = SubprocVecEnv(envs)
+    # Also set up Environment for Evaluation with Unclipped Rewards
+    eval_env = make_env(args.env, args.seed, args.num_train, eval=True)()
+    print('==> environment setup')
+
+    obs_shape = envs.observation_space.shape
+
     env_model = EnvModel()
     if args.env_path:
         model_params = torch.load(args.env_path)
@@ -111,7 +120,7 @@ if __name__ == '__main__':
     # Don't train the environmental model
     env_model.eval()
     env_model.cuda()
-    model = I3A(env_model=env_model)
+    model = I3A(env_model=env_model, actions=envs.action_space.n)
     model.cuda()
 
     # set up optimizer for training
@@ -131,15 +140,6 @@ if __name__ == '__main__':
             raise FileNotFoundError('no snapshot found at "{0}"'.format(args.resume))
     else:
         epoch = 0
-
-    # Set up Environment
-    envs = [make_env(args.env, args.seed, i) for i in range(args.num_train)]
-    envs = SubprocVecEnv(envs)
-    # Also set up Environment for Evaluation with Unclipped Rewards
-    eval_env = make_env(args.env, args.seed, args.num_train, eval=True)()
-    print('==> environment setup')
-
-    obs_shape = envs.observation_space.shape
 
     # State size is represented is 200 hidden size, 200 cell size
     rollouts = RolloutStorage(args.forward_steps, args.num_train, obs_shape, envs.action_space, 2 * model.state_size)

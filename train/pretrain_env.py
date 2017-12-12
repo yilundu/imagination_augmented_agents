@@ -7,6 +7,7 @@ from multiprocessing import Pool
 import utils
 import numpy as np
 import torch
+import torch.nn as nn
 # from hparams import hp
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
@@ -106,10 +107,11 @@ if __name__ == '__main__':
     parser.add_argument('--name', default = 'env-model')
 
     # Training Parameters
-    parser.add_argument('--lr', default = 0.1, type = float)
+    parser.add_argument('--lr', default = 1e-5, type = float)
     parser.add_argument('--momentum', default = 0.9, type = float)
     parser.add_argument('--weight_decay', default = 1e-5, type = float)
     parser.add_argument('--noise', default = 0, type = float)
+    parser.add_argument('--residual', default = False, type = bool)
 
     # parse arguments
     args = parser.parse_args()
@@ -142,11 +144,7 @@ if __name__ == '__main__':
     best_loss = 10000.0
 
     # set up optimizer for training
-    # optimizer = torch.optim.Adam(model.parameters(), lr=1e-5, weight_decay=1e-5)
-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                momentum = args.momentum,
-                                nesterov = True,
-                                weight_decay = args.weight_decay)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
     print('==> optimizer loaded')
 
     # set up experiment path
@@ -180,6 +178,9 @@ if __name__ == '__main__':
     else:
         epoch = 0
 
+    label = torch.FloatTensor(args.batch).cuda()
+    label_loss = nn.BCELoss()
+
     for epoch in range(epoch, args.epochs):
         step = epoch * len(data['train'])
         adjust_learning_rate(optimizer, epoch)
@@ -190,11 +191,7 @@ if __name__ == '__main__':
         if use_adv_model:
             model_adv.train()
 
-        sigma = args.noise / ((1 + epoch) ** noise_decay)
-
         losses = []
-        losses_2 = []
-        losses_3 = []
 
         adv_losses = []
         composite_losses = []
@@ -202,110 +199,75 @@ if __name__ == '__main__':
         s_max = Softmax()
 
         for images, labels in tqdm(loaders['train'], desc = 'epoch %d' % (epoch + 1)):
-            # count += 1
-            # if count > 20:
-            #     continue
             # convert images and labels into cuda tensor
             images = Variable(images.cuda()).float()
-            labels = Variable(labels.cuda())
+            labels = Variable(labels.cuda()).squeeze()
             # initialize optimizer
             optimizer.zero_grad()
+
+            if args.residual:
+                labels = labels - images[:, 3]
 
             # forward pass
             outputs = model.forward(images)
 
-            loss = loss_fn(outputs, labels.squeeze() - images[:,3])
-            losses.append(loss.data[0])
-            loss_2 = loss_fn(images[:,0], labels.squeeze())
-            losses_2.append(loss_2.data[0])
-            loss_3 = loss_fn(Variable(torch.FloatTensor(np.zeros((16, 50, 50))).cuda()), labels.squeeze() - images[:,0])
-            losses_3.append(loss_3.data[0])
+            loss = loss_fn(outputs, labels)
+
             # add summary to logger
             logger.scalar_summary('loss', loss.data[0], step)
             step += args.batch
 
             # Add noise to gradients
-            for w in model.parameters():
-                if w.grad is not None:
-                    w.grad.data.normal_(mean = 0, std = sigma)
+            # for w in model.parameters():
+            #     if w.grad is not None:
+            #         w.grad.data.normal_(mean = 0, std = sigma)
 
             if use_adv_model:
-                if epoch >= epochs_until_use_adv:
-                    adv_input = torch.cat((labels.unsqueeze(1) - images[:,3:4], outputs), 0)
-                else:
-                    # print(labels.unsqueeze(1).size())
-                    # print(images[:,3:4].size())
-                    # print(outputs.size())
-                    # print(images.data[:,3].size())
-                    # print(outputs.data[:,0].size())
-                    adv_input = torch.cat(((labels.unsqueeze(1) - images[:,3:4]).data, outputs.data), 0)
-                    adv_input = Variable(adv_input.cuda())
-                # adv_input = torch.cat((images[:,3], outputs), 0)
-                adv_labels = torch.LongTensor([1 if i < args.batch else 0 for i in range(2 * args.batch)])
-                adv_labels = Variable(adv_labels.cuda())
-
-
-                adv_outputs = model_adv.forward(adv_input)
-
-                adv_loss = CrossEntropyLoss()(adv_outputs, adv_labels)
-                adv_losses.append(adv_loss.data[0])
-                # print(adv_loss)
-
-                # print(s_max(adv_outputs)[1])
-                # print(adv_labels)
-                # print(s_max(adv_outputs))
-                composite_loss = 0.01 * loss + adv_outputs[args.batch:,0].mean()#s_max(adv_outputs)[args.batch:,0].mean()
-                # composite_loss = adv_outputs[args.batch:,0].mean()  
-                # composite_loss = loss + s_max(adv_outputs)[args.batch:,0].mean()
-                composite_losses.append(composite_loss.data[0])
-
-                composite_loss.backward(retain_graph=True)
-                # if epoch >= epochs_until_use_adv:
-                #     composite_loss.backward()
-                # else:
-                #     adv_loss.backward()
-                optimizer.step()
-
                 optimizer_adv.zero_grad()
-                adv_loss.backward()
-                optimizer_adv.step()
-                logger.scalar_summary('Adversarial Loss', adv_loss.data[0], step)
-                logger.scalar_summary('Composite Loss', composite_loss.data[0], step)
-            else:
-                loss.backward()
-                optimizer.step()
-            # print("BLAH ", outputs.size(), labels.size())
-            # print("BLEH ", images.size())
-            # print(labels.size(), (images.size()))
-            # print((images[:,3:4]).size())
 
-            # backward pass
+                # Train Discriminator Network First on Real Data
+                real_input = model_adv.forward(images[:, 0:1])
+                real_labels = Variable(label.fill_(1))
+                real_loss = label_loss(real_input, real_labels)
+
+                # Next Train Discriminator Network on Fake Data
+                adv_input = model_adv.forward(outputs.detach())
+                adv_labels = Variable(label.fill_(0))
+                fake_loss = label_loss(adv_input, adv_labels)
+
+                d_loss = real_loss + fake_loss
+                logger.scalar_summary('Descriminator Loss', d_loss.data[0], step)
+                d_loss.backward()
+
+                optimizer_adv.step()
+
+                # Next train Generator on Criterion from Discriminator
+                real_labels = Variable(label.fill_(1))
+                g_loss = label_loss(model_adv.forward(outputs), real_labels)
+                loss += g_loss
+                logger.scalar_summary('Generator Loss', g_loss.data[0], step)
 
             # Clip gradient norms
+            optimizer.zero_grad()
+            loss.backward()
+            logger.scalar_summary('Composite Loss', loss.data[0], step)
             clip_grad_norm(model.parameters(), 10.0)
+            optimizer.step()
 
-
-        print("Training loss: ", np.array(losses).mean(), len(losses))
-        print("Baseline loss: ", np.array(losses_2).mean(), " ", np.array(losses_3).mean())
-        if use_adv_model:
-            print("Adversarial loss: ", np.array(adv_losses).mean())
-            print("Composite loss: ", np.array(composite_losses).mean())
-        # if args.snapshot != 0 and (epoch + 1) % args.snapshot == 0:
-
-        if np.array(losses).mean() < best_loss:
-            best_loss = np.array(losses).mean()
-
+        if epoch % args.snapshot == 0:
             # snapshot model and optimizer
             snapshot = {
                 'epoch': epoch + 1,
                 'model': model.state_dict(),
-                'optimizer': optimizer.state_dict()
+                'adv_model': model_adv.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'optimizer_adv': optimizer_adv.state_dict()
             }
             torch.save(snapshot, os.path.join(exp_path, 'best.pth'))
             print('==> saved snapshot to "{0}"'.format(os.path.join(exp_path, 'best.pth')))
 
         # Visualize
-        # rand_index = random.randint(0, len(data['train']))
+        rand_index = random.randint(0, len(data['train']))
         if epoch < 100:
             model.eval()
             img = data['train'][234][0].unsqueeze_(0)
@@ -315,7 +277,8 @@ if __name__ == '__main__':
                 outputs = model.forward(images).data[0][0].cpu()
 
                 next_frame = data['train'][time_step + 1][0]
-                action_tensor = [torch.FloatTensor(np.tile(1 if next_frame[3][0][0] == i else 0, (50, 50))) for i in range(5)]
+                action_tensor = torch.zeros(5, 50, 50).float()
+                action_tensor[int(next_frame[3][0][0])].fill_(1)
                 action_tensor = torch.stack(action_tensor)
                 # print((img[0][1], img[0][2], outputs, next_frame[3]))
                 img = torch.stack((img[0][1], img[0][2], outputs), 0)#.unsqueeze_(0)

@@ -10,6 +10,15 @@ def normalized_columns_initializer(weights, std=1.0):
     return out
 
 
+def discr_weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        m.weight.data.normal_(0.0, 0.02)
+    elif classname.find('BatchNorm') != -1:
+        m.weight.data.normal_(1.0, 0.02)
+        m.bias.data.fill_(0)
+
+
 def weights_init(m):
     # TODO Use whatever weight initialization is necessary
     if isinstance(m, nn.Conv1d) or isinstance(m, nn.Conv2d) or isinstance(m, nn.Conv3d):
@@ -64,28 +73,28 @@ class EnvModel(nn.Module):
         return x
 
 class AdvModel(nn.Module):
-    def __init__(self, num_channels=1):
+    # Follows similar architecture to DCGAN
+    def __init__(self, nc=1):
         super(AdvModel, self).__init__()
-        self.conv1 = nn.Conv2d(num_channels, 8, 3, stride=1)
-        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv2 = nn.Conv2d(8, 8, 3, stride=1)
+        ndf = 32
 
-        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.dropout = nn.Dropout(0.5)
-        self.fc = nn.Linear(8 * 11 * 11, 2)
+        self.conv1 = nn.Conv2d(nc, ndf, 3, 2, bias=False)
+        self.conv2 = nn.Conv2d(ndf, 2*ndf, 3, 2, bias=False)
+        self.conv3 = nn.Conv2d(2*ndf, 4*ndf, 3, 2, bias=False)
+        self.conv4 = nn.Conv2d(4*ndf, 1, 3, 2, bias=False)
+        self.output = nn.Sigmoid()
 
-        self.apply(weights_init_2)
+        self.apply(discr_weights_init)
 
     def forward(self, input):
         x = F.elu(self.conv1(input))
-        x = self.pool1(x)
         x = F.elu(self.conv2(x))
-        x = self.pool2(x)
-        # print(x.size())
-        x = x.view(x.size(0), -1)
-        x = self.dropout(x)
-        x = self.fc(x)
-        return x
+        x = F.elu(self.conv3(x))
+        x = F.elu(self.conv4(x))
+        x = F.avg_pool2d(x, 2)
+
+        output = self.output(x)
+        return output.view(-1, 1).squeeze(1)
 
 
 class ModelFree(nn.Module):

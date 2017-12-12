@@ -49,32 +49,17 @@ class PretrainDataset(Dataset):
             image = self.images[index].astype(np.float32)
         else:
             image = self.dataset['images'][index]
-        # print(image[:3].shape)
-        # print(image.shape)
-        # img_data = image[3]
-        # img_tensor = self.preprocess(Image.fromarray(img_data, 'L'))
-        # img_data = np.transpose(image[:3], (1, 2, 0))
-        # img_data = image
-        # img_tensor = self.preprocess(Image.fromarray(img_data))#   , 'RGB'))
-        imgs = [self.preprocess(torch.FloatTensor(image[i])).unsqueeze_(0) for i in range(3)]
-        # imgs = [self.preprocess(Image.fromarray(image[i], 'L')) for i in range(3)]
-        #action_tensor = torch.FloatTensor(image[3:])
-        action_tensor = [torch.FloatTensor(np.tile(1 if image[3][0][0] == i else 0, (50, 50))) for i in range(5)]
-        # print(len(action_tensor))
-        action_tensor = torch.stack(action_tensor)
-        # print(action_tensor.size())
-        label = self.labels[index].astype(np.float32)
-        # print(label.shape)
-        label_tensor = self.preprocess(torch.FloatTensor(label))
-        # print(label_tensor)
-        # label_tensor = self.preprocess(Image.fromarray(label, 'L'))
-        # label_tensor = torch.FloatTensor(np.array([label]))#.astype(int))
 
-        # print(img_tensor.size())
-        # print(imgs[0].size())
-        # print(action_tensor.size())
-        # print(label_tensor.size())
-        return torch.cat((imgs[0], imgs[1], imgs[2], action_tensor), 0), label_tensor
+        action_tensor = torch.zeros(5, 50, 50).float()
+        action_tensor[image[3][0][0]].fill_(1)
+
+        image = torch.from_numpy(image[:3, :, :]).float()
+        aug_image = torch.cat([image, action_tensor], 0)
+
+        label = self.labels[index].astype(np.float32)
+        label_tensor = self.preprocess(torch.from_numpy(label))
+
+        return aug_image, label_tensor
 
     def __len__(self):
         return self.images.shape[0]#self.dataset['images'].shape[0]
