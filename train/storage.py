@@ -89,8 +89,6 @@ class RolloutStorage(object):
             old_action_log_probs_batch = []
             adv_targ = []
 
-            print("Number of envs is, ", num_envs_per_batch)
-
             for offset in range(num_envs_per_batch):
                 ind = perm[start_ind + offset]
                 observations_batch.append(self.observations[:-1, ind])
@@ -108,10 +106,6 @@ class RolloutStorage(object):
             masks_batch = torch.cat(masks_batch, 0)
             old_action_log_probs_batch = torch.cat(old_action_log_probs_batch, 0)
             adv_targ = torch.cat(adv_targ, 0)
-
-            print("Masks_batch size, ", masks_batch.size())
-            print("States_batch size, ", states_batch.size())
-            print("Observation_batch size, ", observations_batch.size())
 
             yield observations_batch, states_batch, actions_batch, \
                 return_batch, masks_batch, old_action_log_probs_batch, adv_targ

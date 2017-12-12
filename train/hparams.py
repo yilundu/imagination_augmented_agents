@@ -10,7 +10,7 @@ class HParams:
         self.conv_output_dim = 256
         self.encoder_output_dim = 50
         # How long of a trajectory to simulate
-        self.traj_length = 10
+        self.traj_length = 2
         # How many trajectories to simulate
         self.traj_num = 4
 

@@ -146,6 +146,9 @@ class I3A(nn.Module):
             x = x.view(-1, hp.lstm_output_dim)
         else:
             # We have something with masks
+            if len(combined_enc.size()) == 2:
+                combined_enc = combined_enc.unsqueeze(0)
+
             outputs = []
             for i in range(combined_enc.size(0)):
                 _, (hx, cx) = self.lstm(combined_enc[i:i+1], (hx * mask[i], cx * mask[i]))

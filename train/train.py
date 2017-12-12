@@ -47,10 +47,11 @@ if __name__ == '__main__':
 
     # dataset
     parser.add_argument('--env', default = 'Frostbite-v0')
+    # parser.add_argument('--env', default = 'SpaceInvaders-v0')
 
     # training
     parser.add_argument('--num-frames', default = 1e7, type = int)
-    parser.add_argument('--minibatch', default = 16, type = int)
+    parser.add_argument('--minibatch', default = 32, type = int)
     parser.add_argument('--eval', default = 500, type = int)
     parser.add_argument('--snapshot', default = 500, type = int)
     parser.add_argument('--gpu', default = '7')
@@ -134,6 +135,8 @@ if __name__ == '__main__':
     # Set up Environment
     envs = [make_env(args.env, args.seed, i) for i in range(args.num_train)]
     envs = SubprocVecEnv(envs)
+    # Also set up Environment for Evaluation with Unclipped Rewards
+    eval_env = make_env(args.env, args.seed, args.num_train, eval=True)()
     print('==> environment setup')
 
     obs_shape = envs.observation_space.shape
@@ -162,6 +165,7 @@ if __name__ == '__main__':
     rollouts.cuda()
 
     for j in range(num_updates):
+        model.train()
         for step in range(args.forward_steps):
             # Sample actions
             hx, cx = rollouts.states[step].split(model.state_size, 1)
@@ -178,6 +182,8 @@ if __name__ == '__main__':
             obs, reward, done, info = envs.step(cpu_actions)
             reward = torch.from_numpy(np.expand_dims(np.stack(reward), 1)).float()
             episode_rewards += reward
+
+            print(done)
 
             # If done then clean the history of observations.
             masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])
@@ -243,16 +249,38 @@ if __name__ == '__main__':
         rollouts.after_update()
         frame_num += args.forward_steps * args.num_train
         logger.scalar_summary('Loss', loss.data[0], frame_num)
+        logger.scalar_summary('Value Loss', value_loss.data[0], frame_num)
+        logger.scalar_summary('Action Loss', action_loss.data[0], frame_num)
+        logger.scalar_summary('Entropy Value', dist_entropy.data[0], frame_num)
+        logger.scalar_summary('Mean Rewards', final_rewards.mean(), frame_num)
+        logger.scalar_summary('Max Rewards', final_rewards.max(), frame_num)
 
-        if j % args.eval == 0:
-            logger.scaler_summary('Score', score, frame_num)
-            print(' * Score of {}'.format(score))
+        # if j % args.eval == 0:
+        #     state = eval_env.reset()
+        #     model.eval()
+        #     score = 0
+        #     hx, cx = Variable(torch.zeros(1, 1, model.state_size)).cuda(), Variable(torch.zeros(1, 1, model.state_size)).cuda()
+        #     mask = Variable(torch.zeros(1, 1, 1)).cuda()
+        #     while True:
+        #         state = Variable(torch.from_numpy(state).unsqueeze(0).float()).cuda()
+
+        #         # Action logits
+        #         action_logit = model.forward((state, (hx, cx), mask))[1]
+        #         action_probs = F.softmax(action_logit)
+        #         action = action_probs.multinomial().data[0, 0]
+
+        #         state, reward, done, _ = eval_env.step(action)
+        #         score += reward
+        #         if done:
+        #             break
+        #     logger.scalar_summary('Actual Score', score, frame_num)
+        #     print(' * Actual Score of {}'.format(score))
 
         if j % args.snapshot == 0:
             snapshot = {
                 'epoch': j + 1,
-                'model': model_state_dict(),
+                'model': model.state_dict(),
                 'optimizer': optimizer.state_dict()
             }
-            torch.save(snapshot, os.path.join())
-            print('==> saved snapshot to "{0}"'.format(os.path.join(exp_path, 'model_{}.pth'.foomat(frame_num))))
+            torch.save(snapshot, os.path.join(exp_path, 'epoch-{}.pth'.format(j)))
+            print('==> saved snapshot to "{0}"'.format(os.path.join(exp_path, 'model_{}.pth'.format(frame_num))))

@@ -14,8 +14,7 @@ try:
 except ImportError:
     pass
 
-
-def make_env(env_id, seed, rank):
+def make_env(env_id, seed, rank, eval=False):
     def _thunk():
         env = gym.make(env_id)
         env.seed(seed + rank)
@@ -24,7 +23,8 @@ def make_env(env_id, seed, rank):
         env.width = 50
         env.height = 50
         env = ScaledFloatFrame(env)
-        env = ClipRewardEnv(env)
+        if not eval:
+            env = ClipRewardEnv(env)
         env = FrameStack(env, 3)
         env = TransposeOb(env)
         return env
