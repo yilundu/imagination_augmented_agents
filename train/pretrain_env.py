@@ -107,7 +107,7 @@ if __name__ == '__main__':
     parser.add_argument('--name', default = 'env-model')
 
     # Training Parameters
-    parser.add_argument('--lr', default = 1e-5, type = float)
+    parser.add_argument('--lr', default = 1e-4, type = float)
     parser.add_argument('--momentum', default = 0.9, type = float)
     parser.add_argument('--weight_decay', default = 1e-5, type = float)
     parser.add_argument('--noise', default = 0, type = float)
@@ -198,61 +198,82 @@ if __name__ == '__main__':
         count = 0
         s_max = Softmax()
 
+        counter = 0
+        real_list = []
+        fake_list = []
+
         for images, labels in tqdm(loaders['train'], desc = 'epoch %d' % (epoch + 1)):
+
             # convert images and labels into cuda tensor
             images = Variable(images.cuda()).float()
             labels = Variable(labels.cuda()).squeeze()
-            # initialize optimizer
-            optimizer.zero_grad()
+            outputs = model.forward(images)
+
+            # Randomly Sample A Real and Fake Datapoint
+            i, j = np.random.randint(0, args.batch, 2)
+            frame = np.random.randint(0, 3)
+            real_list.append(images[i:i+1, frame:frame+1])
+            fake_list.append(outputs[j:j+1])
 
             if args.residual:
                 labels = labels - images[:, 3]
 
+            if len(real_list) >= args.batch:
+                # If we sampled some number of images
+                # use the corresponding images as samples to the GAN
+                for i in range(2):
+                    random_perm = np.random.permutation(len(real_list))
+                    random_index = random_perm[:args.batch]
+
+                    sample_real_list = [real_list[i] for i in random_index]
+                    sample_fake_list = [fake_list[i] for i in random_index]
+
+                    optimizer_adv.zero_grad()
+                    real_input = torch.cat(sample_real_list, dim=0).detach()
+                    fake_input = torch.cat(sample_fake_list, dim=0).detach()
+
+                    # Next Train Discriminator Network on Fake Data
+                    adv_input = model_adv.forward(fake_input)
+                    adv_labels = Variable(label.fill_(0))
+                    fake_loss = label_loss(adv_input, adv_labels)
+                    fake_loss.backward()
+
+                    # Train Discriminator Network First on Real Data
+                    real_input = model_adv.forward(real_input)
+                    real_labels = Variable(label.fill_(1))
+                    real_loss = label_loss(real_input, real_labels)
+                    real_loss.backward()
+
+                    d_loss = fake_loss + real_loss
+
+                    logger.scalar_summary('Real Loss', real_loss.data[0], step)
+                    logger.scalar_summary('Fake Loss', fake_loss.data[0], step)
+                    logger.scalar_summary('Descriminator Loss', d_loss.data[0], step)
+                    optimizer_adv.step()
+
+                if len(real_list) >= 64:
+                    real_list = real_list[1:]
+                    fake_list = fake_list[1:]
+
             # forward pass
-            outputs = model.forward(images)
-
-            loss = loss_fn(outputs, labels)
-
+            square_loss = loss_fn(outputs, labels)
             # add summary to logger
-            logger.scalar_summary('loss', loss.data[0], step)
-            step += args.batch
+            logger.scalar_summary('square loss', square_loss.data[0], step)
 
-            # Add noise to gradients
-            # for w in model.parameters():
-            #     if w.grad is not None:
-            #         w.grad.data.normal_(mean = 0, std = sigma)
-
-            if use_adv_model:
-                optimizer_adv.zero_grad()
-
-                # Train Discriminator Network First on Real Data
-                real_input = model_adv.forward(images[:, 0:1])
-                real_labels = Variable(label.fill_(1))
-                real_loss = label_loss(real_input, real_labels)
-
-                # Next Train Discriminator Network on Fake Data
-                adv_input = model_adv.forward(outputs.detach())
-                adv_labels = Variable(label.fill_(0))
-                fake_loss = label_loss(adv_input, adv_labels)
-
-                d_loss = real_loss + fake_loss
-                logger.scalar_summary('Descriminator Loss', d_loss.data[0], step)
-                d_loss.backward()
-
-                optimizer_adv.step()
-
-                # Next train Generator on Criterion from Discriminator
-                real_labels = Variable(label.fill_(1))
-                g_loss = label_loss(model_adv.forward(outputs), real_labels)
-                loss += g_loss
-                logger.scalar_summary('Generator Loss', g_loss.data[0], step)
+            # Next train Generator on Criterion from Discriminator
+            real_labels = Variable(label.fill_(1))
+            g_loss = label_loss(model_adv.forward(outputs), real_labels)
+            loss = square_loss + g_loss
+            logger.scalar_summary('Generator Loss', g_loss.data[0], step)
 
             # Clip gradient norms
             optimizer.zero_grad()
             loss.backward()
             logger.scalar_summary('Composite Loss', loss.data[0], step)
-            clip_grad_norm(model.parameters(), 10.0)
+            clip_grad_norm(model.parameters(), 1.0)
             optimizer.step()
+
+            step += args.batch
 
         if epoch % args.snapshot == 0:
             # snapshot model and optimizer

@@ -48,12 +48,15 @@ class EnvModel(nn.Module):
     def __init__(self, num_channels=4):
         super(EnvModel, self).__init__()
         self.conv1 = nn.Conv2d(num_channels, 64, 5, stride=1, padding=2)
-        self.conv2 = nn.Conv2d(64, 96, 3, stride=1, padding=1)
-        self.conv3 = nn.Conv2d(96, 64, 3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
         self.conv4 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
         self.conv5 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
         # self.conv6 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
         self.bn1 = nn.BatchNorm2d(64)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.bn3 = nn.BatchNorm2d(64)
+        self.bn4 = nn.BatchNorm2d(64)
         self.conv_predict = nn.Conv2d(64, 1, 3, stride=1, padding=1)
 
         self.apply(weights_init_2)
@@ -62,12 +65,15 @@ class EnvModel(nn.Module):
 
     def forward(self, input):
         x = F.elu(self.conv1(input))
+        x = self.bn1(x)
         x = F.elu(self.conv2(x))
+        x = self.bn2(x)
         x = F.elu(self.conv3(x))
+        x = self.bn3(x)
         x = F.elu(self.conv4(x))
+        x = self.bn4(x)
         x = F.elu(self.conv5(x))
         # x = F.elu(self.conv6(x))
-        x = self.bn1(x)
         x = self.conv_predict(x)
 
         return x
@@ -81,17 +87,18 @@ class AdvModel(nn.Module):
         self.conv1 = nn.Conv2d(nc, ndf, 3, 2, bias=False)
         self.conv2 = nn.Conv2d(ndf, 2*ndf, 3, 2, bias=False)
         self.conv3 = nn.Conv2d(2*ndf, 4*ndf, 3, 2, bias=False)
-        self.conv4 = nn.Conv2d(4*ndf, 1, 3, 2, bias=False)
+        self.conv4 = nn.Conv2d(4*ndf, 8*ndf, 3, 2, bias=False)
+        self.conv5 = nn.Conv2d(8*ndf, 1, 2, 2, bias=False)
         self.output = nn.Sigmoid()
 
         self.apply(discr_weights_init)
 
     def forward(self, input):
-        x = F.elu(self.conv1(input))
-        x = F.elu(self.conv2(x))
-        x = F.elu(self.conv3(x))
-        x = F.elu(self.conv4(x))
-        x = F.avg_pool2d(x, 2)
+        x = nn.LeakyReLU(0.2, inplace=True)(self.conv1(input))
+        x = nn.LeakyReLU(0.2, inplace=True)(self.conv2(x))
+        x = nn.LeakyReLU(0.2, inplace=True)(self.conv3(x))
+        x = nn.LeakyReLU(0.2, inplace=True)(self.conv4(x))
+        x = nn.LeakyReLU(0.2, inplace=True)(self.conv5(x))
 
         output = self.output(x)
         return output.view(-1, 1).squeeze(1)
