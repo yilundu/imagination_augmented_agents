@@ -51,18 +51,18 @@ if __name__ == '__main__':
 
     # training
     parser.add_argument('--num-frames', default = 1e7, type = int)
-    parser.add_argument('--minibatch', default = 32, type = int)
+    parser.add_argument('--minibatch', default = 4, type = int)
     parser.add_argument('--eval', default = 500, type = int)
     parser.add_argument('--snapshot', default = 500, type = int)
     parser.add_argument('--gpu', default = '7')
     parser.add_argument('--env-path', default = None)
     parser.add_argument('--num-train', default = 8, type = int,
                         help="Number of different gym instances to gen data")
-    parser.add_argument('--forward-steps', default = 5, type = int,
+    parser.add_argument('--forward-steps', default = 128, type = int,
                         help="Number of forward frames to simulate")
 
     # Reinforcement Learning Parameters
-    parser.add_argument('--ppo-clip_param', default = 0.2,
+    parser.add_argument('--ppo-clip_param', default = 0.1,
                         help="Clip parameter for PPO")
     parser.add_argument('--ppo-epoch', default = 3, type = int,
                         help="Number of times to process data")
@@ -76,7 +76,7 @@ if __name__ == '__main__':
                         help='value loss coefficient (default: 0.5)')
 
     # Optimization Parameters
-    parser.add_argument('--lr', default = 1e-4, type = float)
+    parser.add_argument('--lr', default = 2.5e-4, type = float)
     parser.add_argument('--momentum', default = 0.9, type = float)
     parser.add_argument('--weight_decay', default = 1e-5, type = float)
     parser.add_argument('--max-grad-norm', type=float, default=0.5,
@@ -266,8 +266,8 @@ if __name__ == '__main__':
 
                 # Action logits
                 action_logit = model.forward((state, (hx, cx), mask))[1]
-                action_probs = F.softmax(action_logit)
-                action = action_probs.multinomial().data[0, 0]
+                action_logit = action_logit.data.numpy()
+                action = action_logit.argmax(axis=1)[0, 0]
 
                 state, reward, done, _ = eval_env.step(action)
                 score += reward

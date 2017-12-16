@@ -50,18 +50,13 @@ class EnvModel(nn.Module):
         self.conv1 = nn.Conv2d(num_channels, 64, 5, stride=1, padding=2)
         self.conv2 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
         self.conv3 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
-        self.conv4 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
-        self.conv5 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
         # self.conv6 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
         self.bn1 = nn.BatchNorm2d(64)
         self.bn2 = nn.BatchNorm2d(64)
         self.bn3 = nn.BatchNorm2d(64)
-        self.bn4 = nn.BatchNorm2d(64)
         self.conv_predict = nn.Conv2d(64, 1, 3, stride=1, padding=1)
 
         self.apply(weights_init_2)
-        # weights_init_2(self.conv1)
-        # weights_init_2(self.conv_predict)
 
     def forward(self, input):
         x = F.elu(self.conv1(input))
@@ -69,11 +64,6 @@ class EnvModel(nn.Module):
         x = F.elu(self.conv2(x))
         x = self.bn2(x)
         x = F.elu(self.conv3(x))
-        x = self.bn3(x)
-        x = F.elu(self.conv4(x))
-        x = self.bn4(x)
-        x = F.elu(self.conv5(x))
-        # x = F.elu(self.conv6(x))
         x = self.conv_predict(x)
 
         return x
