@@ -56,7 +56,7 @@ if __name__ == '__main__':
     parser.add_argument('--snapshot', default = 500, type = int)
     parser.add_argument('--gpu', default = '7')
     parser.add_argument('--env-path', default = None)
-    parser.add_argument('--num-train', default = 32, type = int,
+    parser.add_argument('--num-train', default = 8, type = int,
                         help="Number of different gym instances to gen data")
     parser.add_argument('--forward-steps', default = 5, type = int,
                         help="Number of forward frames to simulate")
@@ -64,15 +64,15 @@ if __name__ == '__main__':
     # Reinforcement Learning Parameters
     parser.add_argument('--ppo-clip_param', default = 0.2,
                         help="Clip parameter for PPO")
-    parser.add_argument('--ppo-epoch', default = 4, type = int,
+    parser.add_argument('--ppo-epoch', default = 3, type = int,
                         help="Number of times to process data")
     parser.add_argument('--tau', type=float, default=0.95,
                         help='gae parameter (default: 0.95)')
-    parser.add_argument('--gamma', type=float, default=0.9,
+    parser.add_argument('--gamma', type=float, default=0.99,
                         help='decay rate')
     parser.add_argument('--entropy-coef', type=float, default=0.01,
                         help='entropy term coefficient (default: 0.01)')
-    parser.add_argument('--value-loss-coef', type=float, default=0.5,
+    parser.add_argument('--value-loss-coef', type=float, default=1.0,
                         help='value loss coefficient (default: 0.5)')
 
     # Optimization Parameters
@@ -255,26 +255,26 @@ if __name__ == '__main__':
         logger.scalar_summary('Mean Rewards', final_rewards.mean(), frame_num)
         logger.scalar_summary('Max Rewards', final_rewards.max(), frame_num)
 
-        # if j % args.eval == 0:
-        #     state = eval_env.reset()
-        #     model.eval()
-        #     score = 0
-        #     hx, cx = Variable(torch.zeros(1, 1, model.state_size)).cuda(), Variable(torch.zeros(1, 1, model.state_size)).cuda()
-        #     mask = Variable(torch.zeros(1, 1, 1)).cuda()
-        #     while True:
-        #         state = Variable(torch.from_numpy(state).unsqueeze(0).float()).cuda()
+        if j % args.eval == 0:
+            state = eval_env.reset()
+            model.eval()
+            score = 0
+            hx, cx = Variable(torch.zeros(1, 1, model.state_size)).cuda(), Variable(torch.zeros(1, 1, model.state_size)).cuda()
+            mask = Variable(torch.zeros(1, 1, 1)).cuda()
+            while True:
+                state = Variable(torch.from_numpy(state).unsqueeze(0).float()).cuda()
 
-        #         # Action logits
-        #         action_logit = model.forward((state, (hx, cx), mask))[1]
-        #         action_probs = F.softmax(action_logit)
-        #         action = action_probs.multinomial().data[0, 0]
+                # Action logits
+                action_logit = model.forward((state, (hx, cx), mask))[1]
+                action_probs = F.softmax(action_logit)
+                action = action_probs.multinomial().data[0, 0]
 
-        #         state, reward, done, _ = eval_env.step(action)
-        #         score += reward
-        #         if done:
-        #             break
-        #     logger.scalar_summary('Actual Score', score, frame_num)
-        #     print(' * Actual Score of {}'.format(score))
+                state, reward, done, _ = eval_env.step(action)
+                score += reward
+                if done:
+                    break
+            logger.scalar_summary('Actual Score', score, frame_num)
+            print(' * Actual Score of {}'.format(score))
 
         if j % args.snapshot == 0:
             snapshot = {
