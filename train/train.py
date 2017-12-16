@@ -183,8 +183,6 @@ if __name__ == '__main__':
             reward = torch.from_numpy(np.expand_dims(np.stack(reward), 1)).float()
             episode_rewards += reward
 
-            print(done)
-
             # If done then clean the history of observations.
             masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])
             final_rewards *= masks
@@ -266,8 +264,8 @@ if __name__ == '__main__':
 
                 # Action logits
                 action_logit = model.forward((state, (hx, cx), mask))[1]
-                action_logit = action_logit.data.numpy()
-                action = action_logit.argmax(axis=1)[0, 0]
+                action_logit = action_logit.cpu().data.numpy()
+                action = action_logit.argmax(axis=1)[0]
 
                 state, reward, done, _ = eval_env.step(action)
                 score += reward
