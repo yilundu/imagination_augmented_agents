@@ -6,7 +6,9 @@ from gym.spaces.box import Box
 
 from baselines import bench
 from baselines.common.atari_wrappers import WarpFrame, ScaledFloatFrame, \
-                                            ClipRewardEnv, FrameStack
+                                            ClipRewardEnv, FrameStack, \
+                                            EpisodicLifeEnv,  NoopResetEnv, \
+                                            MaxAndSkipEnv
 import numpy as np
 
 try:
@@ -18,6 +20,9 @@ def make_env(env_id, seed, rank, eval=False):
     def _thunk():
         env = gym.make(env_id)
         env.seed(seed + rank)
+        env = NoopResetEnv(env, noop_max=30)
+        env = MaxAndSkipEnv(env, skip=4)
+        env = EpisodicLifeEnv(env)
         env = WarpFrame(env)
         # Janky Fix to Resize Environments to be 50x50
         env.width = 50
