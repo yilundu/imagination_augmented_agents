@@ -127,11 +127,13 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-5)
     print('==> optimizer loaded')
 
+    frame_num = 0
     # load snapshot of model and optimizer
     if args.resume is not None:
         if os.path.isfile(args.resume):
             snapshot = torch.load(args.resume)
             epoch = snapshot['epoch']
+            frame_num = snapshot['frame_num']
             model.load_state_dict(snapshot['model'])
             # If this doesn't work, can use optimizer.load_state_dict
             optimizer.load_state_dict(snapshot['optimizer'])
@@ -145,7 +147,6 @@ if __name__ == '__main__':
     rollouts = RolloutStorage(args.forward_steps, args.num_train, obs_shape, envs.action_space, 2 * model.state_size)
     current_obs = torch.zeros(args.num_train, *obs_shape)
     num_updates = args.num_frames // args.num_train // args.forward_steps
-    frame_num = 0
 
     def update_current_obs(obs):
         shape_dim0 = envs.observation_space.shape[0]
@@ -264,8 +265,10 @@ if __name__ == '__main__':
 
                 # Action logits
                 action_logit = model.forward((state, (hx, cx), mask))[1]
-                action_logit = action_logit.cpu().data.numpy()
-                action = action_logit.argmax(axis=1)[0]
+                action_probs = F.softmax(action_logit)
+                log_probs = F.log_softmax(action_logit)
+                actions = action_probs.multinomial()
+                action = actions[0, 0]
 
                 state, reward, done, _ = eval_env.step(action)
                 score += reward
@@ -278,7 +281,8 @@ if __name__ == '__main__':
             snapshot = {
                 'epoch': j + 1,
                 'model': model.state_dict(),
-                'optimizer': optimizer.state_dict()
+                'optimizer': optimizer.state_dict(),
+                'frame_num': frame_num
             }
             torch.save(snapshot, os.path.join(exp_path, 'epoch-{}.pth'.format(j)))
             print('==> saved snapshot to "{0}"'.format(os.path.join(exp_path, 'model_{}.pth'.format(frame_num))))
