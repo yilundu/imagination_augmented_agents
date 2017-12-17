@@ -75,10 +75,12 @@ def accuracy(output, target, topk=(1,)):
 
 
 NAME_TO_MODEL = {
-	'env-model': EnvModel(num_channels=8)
+	'env-model': EnvModel(num_channels=4),
+    'env-model-one-hot': EnvModel(num_channels=7),
+    'dilation-2': EnvModel(num_channels=4, dilation=2)
 }
 
-use_adv_model = True
+use_adv_model = False
 
 if __name__ == '__main__':
     default_path = '../data'
@@ -201,8 +203,12 @@ if __name__ == '__main__':
         counter = 0
         real_list = []
         fake_list = []
+        count = 0
 
         for images, labels in tqdm(loaders['train'], desc = 'epoch %d' % (epoch + 1)):
+            # if count > 20:
+            #     continue
+            count += 1
 
             # convert images and labels into cuda tensor
             images = Variable(images.cuda()).float()
@@ -212,13 +218,14 @@ if __name__ == '__main__':
             # Randomly Sample A Real and Fake Datapoint
             i, j = np.random.randint(0, args.batch, 2)
             frame = np.random.randint(0, 3)
-            real_list.append(images[i:i+1, frame:frame+1])
-            fake_list.append(outputs[j:j+1])
+            if use_adv_model:            
+                real_list.append(images[i:i+1, frame:frame+1])
+                fake_list.append(outputs[j:j+1])
 
             if args.residual:
                 labels = labels - images[:, 3]
 
-            if len(real_list) >= args.batch:
+            if len(real_list) >= args.batch and use_adv_model:
                 # If we sampled some number of images
                 # use the corresponding images as samples to the GAN
                 for i in range(2):
@@ -262,9 +269,11 @@ if __name__ == '__main__':
 
             # Next train Generator on Criterion from Discriminator
             real_labels = Variable(label.fill_(1))
-            g_loss = label_loss(model_adv.forward(outputs), real_labels)
+            g_loss = 0 if not use_adv_model else label_loss(model_adv.forward(outputs), real_labels)
             loss = square_loss + g_loss
-            logger.scalar_summary('Generator Loss', g_loss.data[0], step)
+            losses.append(loss.data[0])
+            if use_adv_model:
+                logger.scalar_summary('Generator Loss', g_loss.data[0], step)
 
             # Clip gradient norms
             optimizer.zero_grad()
@@ -275,14 +284,15 @@ if __name__ == '__main__':
 
             step += args.batch
 
+        print('Composite loss: ', np.array(losses).mean())
         if epoch % args.snapshot == 0:
             # snapshot model and optimizer
             snapshot = {
                 'epoch': epoch + 1,
                 'model': model.state_dict(),
-                'adv_model': model_adv.state_dict(),
+                'adv_model': None if not use_adv_model else model_adv.state_dict(),
                 'optimizer': optimizer.state_dict(),
-                'optimizer_adv': optimizer_adv.state_dict()
+                'optimizer_adv': None if not use_adv_model else optimizer_adv.state_dict()
             }
             torch.save(snapshot, os.path.join(exp_path, 'best.pth'))
             print('==> saved snapshot to "{0}"'.format(os.path.join(exp_path, 'best.pth')))
@@ -298,9 +308,10 @@ if __name__ == '__main__':
                 outputs = model.forward(images).data[0][0].cpu()
 
                 next_frame = data['train'][time_step + 1][0]
-                action_tensor = torch.zeros(5, 50, 50).float()
+                action_tensor = torch.zeros(4, 50, 50).float()
                 action_tensor[int(next_frame[3][0][0])].fill_(1)
                 action_tensor = torch.stack(action_tensor)
+                # action_tensor = next_frame[3:]#torch.from_numpy(next_frame[3])
                 # print((img[0][1], img[0][2], outputs, next_frame[3]))
                 img = torch.stack((img[0][1], img[0][2], outputs), 0)#.unsqueeze_(0)
                 # print(img.size())

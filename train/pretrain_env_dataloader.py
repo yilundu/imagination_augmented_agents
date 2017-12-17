@@ -50,10 +50,14 @@ class PretrainDataset(Dataset):
         else:
             image = self.dataset['images'][index]
 
-        action_tensor = torch.zeros(5, 50, 50).float()
-        action_tensor[image[3][0][0]].fill_(1)
+        # action_tensor = torch.from_numpy(image[3:])
+        action_tensor = torch.zeros(4, 50, 50).float()
+        if image[3][0][0] != 4:
+            action_tensor[image[3][0][0]].fill_(1)
+        image = self.preprocess(torch.from_numpy(image[:3]))
 
-        image = torch.from_numpy(image[:3, :, :]).float()
+        # image = torch.from_numpy(image[:3, :, :]).float()
+        # image = self.normalize(image)
         aug_image = torch.cat([image, action_tensor], 0)
 
         label = self.labels[index].astype(np.float32)

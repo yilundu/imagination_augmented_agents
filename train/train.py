@@ -112,10 +112,10 @@ if __name__ == '__main__':
 
     obs_shape = envs.observation_space.shape
 
-    env_model = EnvModel()
+    env_model = EnvModel(num_channels=7)
     if args.env_path:
         model_params = torch.load(args.env_path)
-        env_model.load_state_dict(model_params)
+        env_model.load_state_dict(model_params['model'])
 
     # Don't train the environmental model
     env_model.eval()
@@ -270,7 +270,7 @@ if __name__ == '__main__':
                 actions = action_probs.multinomial()
                 action = actions[0, 0]
 
-                state, reward, done, _ = eval_env.step(action)
+                state, reward, done, _ = eval_env.step(action.data[0])
                 score += reward
                 if done:
                     break

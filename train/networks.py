@@ -1,7 +1,30 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
 from hparams import hp
+
+
+ACTION_TO_ENCODING = [
+    [],
+    [],
+    [2],
+    [1],
+    [3],
+    [0],
+    [1, 2],
+    [2, 3],
+    [0, 1],
+    [0, 3],
+    [2],
+    [1],
+    [3],
+    [0],
+    [1, 2],
+    [2, 3],
+    [0, 1],
+    [0, 3]
+]
 
 
 def normalized_columns_initializer(weights, std=1.0):
@@ -45,24 +68,23 @@ def weights_init_2(m):
 class EnvModel(nn.Module):
     """Network which given an input image frame consisting of last 3 frames and action
        , predicts the subsequent frame"""
-    def __init__(self, num_channels=4):
+    def __init__(self, num_channels=4, dilation=1):
         super(EnvModel, self).__init__()
-        self.conv1 = nn.Conv2d(num_channels, 64, 5, stride=1, padding=2)
-        self.conv2 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(num_channels, 64, 5, stride=1, padding=2*dilation, dilation=dilation)
+        self.conv2 = nn.Conv2d(64, 64, 3, stride=1, padding=dilation, dilation=dilation)
         self.conv3 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
         # self.conv6 = nn.Conv2d(64, 64, 3, stride=1, padding=1)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.bn2 = nn.BatchNorm2d(64)
-        self.bn3 = nn.BatchNorm2d(64)
+        # self.bn1 = nn.BatchNorm2d(64)
+        # self.bn2 = nn.BatchNorm2d(64)
         self.conv_predict = nn.Conv2d(64, 1, 3, stride=1, padding=1)
 
         self.apply(weights_init_2)
 
     def forward(self, input):
         x = F.elu(self.conv1(input))
-        x = self.bn1(x)
+        # x = self.bn1(x)
         x = F.elu(self.conv2(x))
-        x = self.bn2(x)
+        # x = self.bn2(x)
         x = F.elu(self.conv3(x))
         x = self.conv_predict(x)
 
@@ -125,7 +147,7 @@ class I3A(nn.Module):
     def __init__(self, env_model, actions=4):
         super(I3A, self).__init__()
         self.encoder_lstm = nn.LSTM(hp.conv_output_dim, hp.encoder_output_dim)
-        self.model_free = ModelFree()
+        self.model_free = ModelFree(actions=actions)
         self.env_model = env_model
 
         self.lstm = nn.LSTM(hp.joint_input_dim, hp.lstm_output_dim)
@@ -222,9 +244,18 @@ class I3A(nn.Module):
             actions = F.softmax(actions)
             actions = actions.multinomial().float()
             actions = actions.detach()
+            # print(actions.data)
+            action_encoding = actions.data.cpu().numpy()
+            # print(action_encoding)
 
-            action_conv = actions.view(batch_size, 1, 1, 1).contiguous()
-            action_conv = action_conv.expand(batch_size, 1, 50, 50).contiguous()
+            action_conv = torch.zeros(batch_size, 4, 50, 50).float()
+            # print(action_encoding)
+            # print(action_encoding.shape)
+            for j in range(action_encoding.shape[0]):
+                fills = ACTION_TO_ENCODING[int(action_encoding[j][0])]
+                for ind in fills:
+                    action_conv[j,ind].fill_(2 if action_encoding[j][0] <= 9 else 1)
+            action_conv = Variable(action_conv.cuda())
 
             conv_input = torch.cat([input, action_conv], 1)
 
