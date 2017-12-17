@@ -22,7 +22,6 @@ def make_env(env_id, seed, rank, eval=False):
         env.seed(seed + rank)
         env = NoopResetEnv(env, noop_max=30)
         env = MaxAndSkipEnv(env, skip=4)
-        env = EpisodicLifeEnv(env)
         env = WarpFrame(env)
         # Janky Fix to Resize Environments to be 50x50
         env.width = 50
@@ -30,6 +29,7 @@ def make_env(env_id, seed, rank, eval=False):
         env = ScaledFloatFrame(env)
         if not eval:
             env = ClipRewardEnv(env)
+            env = EpisodicLifeEnv(env)
         env = FrameStack(env, 3)
         env = TransposeOb(env)
         return env
